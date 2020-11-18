@@ -116,44 +116,6 @@ theme.Sections.prototype = _.assignIn({}, theme.Sections.prototype, {
 window.slate = window.slate || {};
 
 /**
- * Slate utilities
- * -----------------------------------------------------------------------------
- * A collection of useful utilities to help build your theme
- *
- *
- * @namespace utils
- */
-
-slate.utils = {
-  /**
-   * Get the query params in a Url
-   * Ex
-   * https://mysite.com/search?q=noodles&b
-   * getParameterByName('q') = "noodles"
-   * getParameterByName('b') = "" (empty value)
-   * getParameterByName('test') = null (absent)
-   */
-  getParameterByName: function(name, url) {
-    if (!url) url = window.location.href;
-    name = name.replace(/[[\]]/g, '\\$&');
-    var regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)'),
-      results = regex.exec(url);
-    if (!results) return null;
-    if (!results[2]) return '';
-    return decodeURIComponent(results[2].replace(/\+/g, ' '));
-  },
-
-  keyboardKeys: {
-    TAB: 9,
-    ENTER: 13,
-    LEFTARROW: 37,
-    RIGHTARROW: 39
-  }
-};
-
-window.slate = window.slate || {};
-
-/**
  * iFrames
  * -----------------------------------------------------------------------------
  * Wrap videos in div to force responsive layout.
@@ -267,50 +229,12 @@ slate.a11y = {
    * @param {string} options.namespace - Namespace used for new focus event handler
    */
   trapFocus: function(options) {
-    var eventsName = {
-      focusin: options.namespace ? 'focusin.' + options.namespace : 'focusin',
-      focusout: options.namespace
-        ? 'focusout.' + options.namespace
-        : 'focusout',
-      keydown: options.namespace
-        ? 'keydown.' + options.namespace
-        : 'keydown.handleFocus'
-    };
-
-    /**
-     * Get every possible visible focusable element
-     */
-    var $focusableElements = options.$container.find(
-      $(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex^="-"])'
-      ).filter(':visible')
-    );
-    var firstFocusable = $focusableElements[0];
-    var lastFocusable = $focusableElements[$focusableElements.length - 1];
+    var eventName = options.namespace
+      ? 'focusin.' + options.namespace
+      : 'focusin';
 
     if (!options.$elementToFocus) {
       options.$elementToFocus = options.$container;
-    }
-
-    function _manageFocus(evt) {
-      if (evt.keyCode !== slate.utils.keyboardKeys.TAB) return;
-
-      /**
-       * On the last focusable element and tab forward,
-       * focus the first element.
-       */
-      if (evt.target === lastFocusable && !evt.shiftKey) {
-        evt.preventDefault();
-        firstFocusable.focus();
-      }
-      /**
-       * On the first focusable element and tab backward,
-       * focus the last element.
-       */
-      if (evt.target === firstFocusable && evt.shiftKey) {
-        evt.preventDefault();
-        lastFocusable.focus();
-      }
     }
 
     options.$container.attr('tabindex', '-1');
@@ -318,16 +242,13 @@ slate.a11y = {
 
     $(document).off('focusin');
 
-    $(document).on(eventsName.focusout, function() {
-      $(document).off(eventsName.keydown);
-    });
-
-    $(document).on(eventsName.focusin, function(evt) {
-      if (evt.target !== lastFocusable && evt.target !== firstFocusable) return;
-
-      $(document).on(eventsName.keydown, function(evt) {
-        _manageFocus(evt);
-      });
+    $(document).on(eventName, function(evt) {
+      if (
+        options.$container[0] !== evt.target &&
+        !options.$container.has(evt.target).length
+      ) {
+        options.$container.focus();
+      }
     });
   },
 
@@ -349,84 +270,26 @@ slate.a11y = {
 
     $(document).off(eventName);
   },
-
-  /**
-   * Add aria-describedby attribute to external and new window links
-   *
-   * @param {object} options - Options to be used
-   * @param {object} options.messages - Custom messages to be used
-   * @param {jQuery} options.$links - Specific links to be targeted
-   */
-  accessibleLinks: function(options) {
-    var body = document.querySelector('body');
-
-    var idSelectors = {
-      newWindow: 'a11y-new-window-message',
-      external: 'a11y-external-message',
-      newWindowExternal: 'a11y-new-window-external-message'
-    };
-
-    if (options.$links === undefined || !options.$links.jquery) {
-      options.$links = $('a[href]:not([aria-describedby])');
+  
+    lockMobileScrolling: function(namespace, $element) {
+      if ($element) {
+        var $el = $element;
+      } else {
+        var $el = $(document.documentElement).add('body');
+      }
+      $el.on('touchmove' + namespace, function () {
+        return false;
+      });
+    },
+  
+    unlockMobileScrolling: function(namespace, $element) {
+      if ($element) {
+        var $el = $element;
+      } else {
+        var $el = $(document.documentElement).add('body');
+      }
+      $el.off(namespace);
     }
-
-    function generateHTML(customMessages) {
-      if (typeof customMessages !== 'object') {
-        customMessages = {};
-      }
-
-      var messages = $.extend(
-        {
-          newWindow: 'Opens in a new window.',
-          external: 'Opens external website.',
-          newWindowExternal: 'Opens external website in a new window.'
-        },
-        customMessages
-      );
-
-      var container = document.createElement('ul');
-      var htmlMessages = '';
-
-      for (var message in messages) {
-        htmlMessages +=
-          '<li id=' + idSelectors[message] + '>' + messages[message] + '</li>';
-      }
-
-      container.setAttribute('hidden', true);
-      container.innerHTML = htmlMessages;
-
-      body.appendChild(container);
-    }
-
-    function _externalSite($link) {
-      var hostname = window.location.hostname;
-
-      return $link[0].hostname !== hostname;
-    }
-
-    $.each(options.$links, function() {
-      var $link = $(this);
-      var target = $link.attr('target');
-      var rel = $link.attr('rel');
-      var isExternal = _externalSite($link);
-      var isTargetBlank = target === '_blank';
-
-      if (isExternal) {
-        $link.attr('aria-describedby', idSelectors.external);
-      }
-      if (isTargetBlank) {
-        if (rel === undefined || rel.indexOf('noopener') === -1) {
-          $link.attr('rel', 'noopener');
-        }
-        $link.attr('aria-describedby', idSelectors.newWindow);
-      }
-      if (isExternal && isTargetBlank) {
-        $link.attr('aria-describedby', idSelectors.newWindowExternal);
-      }
-    });
-
-    generateHTML(options.messages);
-  }
 };
 
 /**
@@ -615,9 +478,25 @@ theme.Currency = (function() {
 
     return formatString.replace(placeholderRegex, value);
   }
+  
+function getBaseUnit(variant) {
+  if (!variant) {
+	return;
+  }
+
+  if (!variant.unit_price_measurement || !variant.unit_price_measurement.reference_value) {
+	return;
+  }
+
+  return variant.unit_price_measurement.reference_value === 1
+	? variant.unit_price_measurement.reference_unit
+	: variant.unit_price_measurement.reference_value +
+		variant.unit_price_measurement.reference_unit;
+}
 
   return {
-    formatMoney: formatMoney
+    formatMoney: formatMoney,
+	getBaseUnit: getBaseUnit
   };
 })();
 
@@ -835,169 +714,157 @@ slate.Variants = (function() {
 /*============================================================================
   Drawer modules
 ==============================================================================*/
-theme.Drawers = (function() {
-  function Drawer(id, position, options) {
-    var defaults = {
-      close: '.js-drawer-close',
-      open: '.js-drawer-open-' + position,
-      openClass: 'js-drawer-open',
-      dirOpenClass: 'js-drawer-open-' + position
-    };
-
-    this.nodes = {
-      $parent: $('html').add('body'),
-      $page: $('#PageContainer')
-    };
-
-    this.config = $.extend(defaults, options);
-    this.position = position;
-
-    this.$drawer = $('#' + id);
-
-    if (!this.$drawer.length) {
-      return false;
-    }
-
-    this.drawerIsOpen = false;
-    this.init();
-  }
-
-  Drawer.prototype.init = function() {
-    $(this.config.open).on('click', $.proxy(this.open, this));
-    this.$drawer.on('click', this.config.close, $.proxy(this.close, this));
-  };
-
-  Drawer.prototype.open = function(evt) {
-    // Keep track if drawer was opened from a click, or called by another function
-    var externalCall = false;
-
-    // Prevent following href if link is clicked
-    if (evt) {
-      evt.preventDefault();
-    } else {
-      externalCall = true;
-    }
-
-    // Without this, the drawer opens, the click event bubbles up to nodes.$page
-    // which closes the drawer.
-    if (evt && evt.stopPropagation) {
-      evt.stopPropagation();
-      // save the source of the click, we'll focus to this on close
-      this.$activeSource = $(evt.currentTarget);
-    }
-
-    if (this.drawerIsOpen && !externalCall) {
-      return this.close();
-    }
-
-    // Add is-transitioning class to moved elements on open so drawer can have
-    // transition for close animation
-    this.$drawer.prepareTransition();
-
-    this.nodes.$parent.addClass(
-      this.config.openClass + ' ' + this.config.dirOpenClass
-    );
-    this.drawerIsOpen = true;
-
-    // Set focus on drawer
-    slate.a11y.trapFocus({
-      $container: this.$drawer,
-      namespace: 'drawer_focus'
-    });
-
-    // Run function when draw opens if set
-    if (
-      this.config.onDrawerOpen &&
-      typeof this.config.onDrawerOpen === 'function'
-    ) {
-      if (!externalCall) {
-        this.config.onDrawerOpen();
-      }
-    }
-
-    if (this.$activeSource && this.$activeSource.attr('aria-expanded')) {
-      this.$activeSource.attr('aria-expanded', 'true');
-    }
-
-    this.bindEvents();
-
-    return this;
-  };
-
-  Drawer.prototype.close = function() {
-    if (!this.drawerIsOpen) {
-      // don't close a closed drawer
-      return;
-    }
-
-    // deselect any focused form elements
-    $(document.activeElement).trigger('blur');
-
-    // Ensure closing transition is applied to moved elements, like the nav
-    this.$drawer.prepareTransition();
-
-    this.nodes.$parent.removeClass(
-      this.config.dirOpenClass + ' ' + this.config.openClass
-    );
-
-    if (this.$activeSource && this.$activeSource.attr('aria-expanded')) {
-      this.$activeSource.attr('aria-expanded', 'false');
-    }
-
-    this.drawerIsOpen = false;
-
-    // Remove focus on drawer
-    slate.a11y.removeTrapFocus({
-      $container: this.$drawer,
-      namespace: 'drawer_focus'
-    });
-
-    this.unbindEvents();
-
-    // Run function when draw closes if set
-    if (
-      this.config.onDrawerClose &&
-      typeof this.config.onDrawerClose === 'function'
-    ) {
-      this.config.onDrawerClose();
-    }
-  };
-
-  Drawer.prototype.bindEvents = function() {
-    this.nodes.$parent.on(
-      'keyup.drawer',
-      $.proxy(function(evt) {
-        // close on 'esc' keypress
-        if (evt.keyCode === 27) {
-          this.close();
-          return false;
-        } else {
-          return true;
-        }
-      }, this)
-    );
-
-    // Lock scrolling on mobile
-    this.nodes.$page.on('touchmove.drawer', function() {
-      return false;
-    });
-
-    this.nodes.$page.on(
-      'click.drawer',
-      $.proxy(function() {
-        this.close();
+  theme.Drawers = (function() {
+    function Drawer(id, name, ignoreScrollLock) {
+      this.config = {
+        id: id,
+        close: '.js-drawer-close',
+        open: '.js-drawer-open-' + name,
+        openClass: 'js-drawer-open',
+        closingClass: 'js-drawer-closing',
+        activeDrawer: 'drawer--is-open',
+        namespace: '.drawer-' + name
+      };
+  
+      this.$nodes = {
+        parent: $(document.documentElement).add('body'),
+        page: $('#MainContent')
+      };
+  
+      this.$drawer = $('#' + id);
+  
+      if (!this.$drawer.length) {
         return false;
-      }, this)
-    );
-  };
-
-  Drawer.prototype.unbindEvents = function() {
-    this.nodes.$page.off('.drawer');
-    this.nodes.$parent.off('.drawer');
-  };
-
-  return Drawer;
-})();
+      }
+  
+      this.isOpen = false;
+      this.ignoreScrollLock = ignoreScrollLock;
+      this.init();
+    };
+  
+    Drawer.prototype = $.extend({}, Drawer.prototype, {
+      init: function() {
+        var $openBtn = $(this.config.open);
+  
+        // Add aria controls
+        $openBtn.attr('aria-expanded', 'false');
+  
+        $openBtn.on('click', this.open.bind(this));
+        this.$drawer.find(this.config.close).on('click', this.close.bind(this));
+  
+        // Close modal if a drawer is opened
+        $('body').on('productModalOpen', function() {
+          this.close();
+        }.bind(this));
+      },
+  
+      open: function(evt, returnFocusEl) {
+        if (evt) {
+          evt.preventDefault();
+        }
+  
+        if (this.isOpen) {
+          return;
+        }
+  
+        // Without this the drawer opens, the click event bubbles up to $nodes.page which closes the drawer.
+        if (evt && evt.stopPropagation) {
+          evt.stopPropagation();
+          // save the source of the click, we'll focus to this on close
+          this.$activeSource = $(evt.currentTarget).attr('aria-expanded', 'true');
+        } else if (returnFocusEl) {
+          var $el = $(returnFocusEl);
+          this.$activeSource = $el.attr('aria-expanded', 'true');
+        }
+  
+        this.$drawer.prepareTransition().addClass(this.config.activeDrawer);
+  
+        this.$nodes.parent.addClass(this.config.openClass);
+        this.isOpen = true;
+  
+        slate.a11y.trapFocus({
+          $container: this.$drawer,
+          namespace: 'drawer_focus'
+        });
+  
+        $('body')
+          .trigger('drawerOpen')
+          .trigger('drawerOpen.' + this.config.id);
+  
+        this.bindEvents();
+      },
+  
+      close: function() {
+        if (!this.isOpen) {
+          return;
+        }
+  
+        // deselect any focused form elements
+        $(document.activeElement).trigger('blur');
+  
+        this.$drawer.prepareTransition().removeClass(this.config.activeDrawer);
+  
+        this.$nodes.parent.removeClass(this.config.openClass);
+        this.$nodes.parent.addClass(this.config.closingClass);
+        window.setTimeout(function() {
+          this.$nodes.parent.removeClass(this.config.closingClass);
+          if (this.$activeSource && this.$activeSource.attr('aria-expanded')) {
+            this.$activeSource.attr('aria-expanded', 'false').focus();
+          }
+        }.bind(this), 500);
+  
+        this.isOpen = false;
+  
+        slate.a11y.removeTrapFocus({
+          $container: this.$drawer,
+          namespace: 'drawer_focus'
+        });
+  
+        this.unbindEvents();
+      },
+  
+      bindEvents: function() {
+        if (!this.ignoreScrollLock) {
+          slate.a11y.lockMobileScrolling(this.config.namespace, this.$nodes.page);
+        }
+  
+        // Clicking out of drawer closes it.
+        // Check to see if clicked on element in drawer
+        // because of any drawer built witin #MainContent
+        this.$nodes.page.on('click' + this.config.namespace, function (evt) {
+          var $target = $(evt.target);
+          var doNotClose = this.elementInsideDrawer($target);
+          if (!doNotClose) {
+            this.close();
+            return false;
+          }
+  
+        }.bind(this));
+  
+        // Pressing escape closes drawer
+        this.$nodes.parent.on('keyup' + this.config.namespace, function(evt) {
+          if (evt.keyCode === 27) {
+            this.close();
+          }
+        }.bind(this));
+      },
+  
+      unbindEvents: function() {
+        if (!this.ignoreScrollLock) {
+          slate.a11y.unlockMobileScrolling(this.config.namespace, this.$nodes.page);
+        }
+        this.$nodes.parent.off(this.config.namespace);
+        this.$nodes.page.off(this.config.namespace);
+      },
+  
+      // Check if clicked element is inside the drawer
+      elementInsideDrawer: function($el) {
+        return this.$drawer.find($el).length;
+      }
+    });
+  
+    return Drawer;
+  })();
 
 
 /* ================ MODULES ================ */
@@ -1006,7 +873,6 @@ window.theme = window.theme || {};
 theme.Header = (function() {
   var selectors = {
     body: 'body',
-    multicurrencySelector: '[data-currency-selector]',
     navigation: '#AccessibleNav',
     siteNavHasDropdown: '.site-nav--has-dropdown',
     siteNavChildLinks: '.site-nav__child-link',
@@ -1025,10 +891,16 @@ theme.Header = (function() {
   function init() {
     cacheSelectors();
 
-    cache.$parents.on('click.siteNav', function() {
+    cache.$parents.on('click.siteNav', function(evt) {
       var $el = $(this);
 
-      $el.hasClass(config.activeClass) ? hideDropdown($el) : showDropdown($el);
+      if (!$el.hasClass(config.activeClass)) {
+        // force stop the click from happening
+        evt.preventDefault();
+        evt.stopImmediatePropagation();
+      }
+
+      showDropdown($el);
     });
 
     // check when we're leaving a dropdown and close the active dropdown
@@ -1055,12 +927,6 @@ theme.Header = (function() {
     cache.$subMenuLinks.on('click.siteNav', function(evt) {
       // Prevent click on body from firing instead of link
       evt.stopImmediatePropagation();
-    });
-
-    $(selectors.multicurrencySelector).on('change', function() {
-      $(this)
-        .parents('form')
-        .submit();
     });
   }
 
@@ -1161,9 +1027,7 @@ theme.MobileNav = (function() {
     // Close mobile nav when unmatching mobile breakpoint
     enquire.register(mediaQuerySmall, {
       unmatch: function() {
-        if (cache.$mobileNavContainer.hasClass(classes.navOpen)) {
-          closeMobileNav();
-        }
+        closeMobileNav();
       }
     });
   }
@@ -1189,7 +1053,8 @@ theme.MobileNav = (function() {
   }
 
   function openMobileNav() {
-    var translateHeaderHeight = cache.$siteHeader.outerHeight();
+    var translateHeaderHeight =
+      cache.$siteHeader.outerHeight() + cache.$siteHeader.position().top;
 
     cache.$mobileNavContainer.prepareTransition().addClass(classes.navOpen);
 
@@ -1204,14 +1069,15 @@ theme.MobileNav = (function() {
 
     slate.a11y.trapFocus({
       $container: cache.$sectionHeader,
-      $elementToFocus: cache.$mobileNavToggle,
+      $elementToFocus: cache.$mobileNav
+        .find('.' + classes.navLinkWrapper + ':first')
+        .find('.' + classes.navLink),
       namespace: 'navFocus'
     });
 
     cache.$mobileNavToggle
       .addClass(classes.mobileNavCloseIcon)
-      .removeClass(classes.mobileNavOpenIcon)
-      .attr('aria-expanded', true);
+      .removeClass(classes.mobileNavOpenIcon);
 
     // close on escape
     $(window).on('keyup.mobileNav', function(evt) {
@@ -1230,11 +1096,6 @@ theme.MobileNav = (function() {
 
     cache.$pageContainer.removeAttr('style');
 
-    slate.a11y.trapFocus({
-      $container: $('html'),
-      $elementToFocus: $('body')
-    });
-
     cache.$mobileNavContainer.one(
       'TransitionEnd.navToggle webkitTransitionEnd.navToggle transitionend.navToggle oTransitionEnd.navToggle',
       function() {
@@ -1247,13 +1108,9 @@ theme.MobileNav = (function() {
 
     cache.$mobileNavToggle
       .addClass(classes.mobileNavOpenIcon)
-      .removeClass(classes.mobileNavCloseIcon)
-      .attr('aria-expanded', false)
-      .focus();
+      .removeClass(classes.mobileNavCloseIcon);
 
     $(window).off('keyup.mobileNav');
-
-    scrollTo(0, 0);
   }
 
   function toggleSubNav(evt) {
@@ -1298,6 +1155,10 @@ theme.MobileNav = (function() {
 
     $activeSubNav = $targetMenu;
 
+    var $elementToFocus = target
+      ? $targetMenu.find('.' + classes.subNavLink + ':first')
+      : $activeTrigger;
+
     /*eslint-enable shopify/jquery-dollar-sign-reference */
 
     var translateMenuHeight = $targetMenu.outerHeight();
@@ -1317,18 +1178,12 @@ theme.MobileNav = (function() {
         .removeClass(classes.subNavShowing);
     }
 
-    /* if going back to first subnav, focus is on whole header */
-    var $container = menuLevel === 1 ? cache.$sectionHeader : $targetMenu;
-
-    var $menuTitle = $targetMenu.find('[data-menu-title=' + menuLevel + ']');
-    var $elementToFocus = $menuTitle ? $menuTitle : $targetMenu;
-
     // Focusing an item in the subnav early forces element into view and breaks the animation.
     cache.$mobileNavContainer.one(
       'TransitionEnd.subnavToggle webkitTransitionEnd.subnavToggle transitionend.subnavToggle oTransitionEnd.subnavToggle',
       function() {
         slate.a11y.trapFocus({
-          $container: $container,
+          $container: $targetMenu,
           $elementToFocus: $elementToFocus,
           namespace: 'subNavFocus'
         });
@@ -1371,16 +1226,11 @@ theme.Search = (function() {
     searchHeaderInput: '.search-header__input',
     searchHeaderSubmit: '.search-header__submit',
 
-    searchResultSubmit: '#SearchResultSubmit',
-    searchResultInput: '#SearchInput',
-    searchResultMessage: '[data-search-error-message]',
-
     mobileNavWrapper: '.mobile-nav-wrapper'
   };
 
   var classes = {
     focus: 'search--focus',
-    hidden: 'hide',
     mobileNavIsOpen: 'js-menu--is-open'
   };
 
@@ -1389,23 +1239,8 @@ theme.Search = (function() {
       return;
     }
 
-    this.$searchResultInput = $(selectors.searchResultInput);
-    this.$searchErrorMessage = $(selectors.searchResultMessage);
-
     initDrawer();
-
-    var isSearchPage =
-      slate.utils.getParameterByName('q') !== null &&
-      window.location.pathname === '/search';
-
-    if (isSearchPage) {
-      validateSearchResultForm.call(this);
-    }
-
-    $(selectors.searchResultSubmit).on(
-      'click',
-      validateSearchResultForm.bind(this)
-    );
+    searchSubmit();
 
     $(selectors.searchHeaderInput)
       .add(selectors.searchHeaderSubmit)
@@ -1429,12 +1264,10 @@ theme.Search = (function() {
     $('#PageContainer').addClass('drawer-page-content');
     $('.js-drawer-open-top')
       .attr('aria-controls', 'SearchDrawer')
-      .attr('aria-expanded', 'false')
-      .attr('aria-haspopup', 'dialog');
+      .attr('aria-expanded', 'false');
 
     theme.SearchDrawer = new theme.Drawers('SearchDrawer', 'top', {
-      onDrawerOpen: searchDrawerFocus,
-      onDrawerClose: searchDrawerFocusClose
+      onDrawerOpen: searchDrawerFocus
     });
   }
 
@@ -1452,44 +1285,15 @@ theme.Search = (function() {
     $el[0].setSelectionRange(0, $el[0].value.length);
   }
 
-  function searchDrawerFocusClose() {
-    $(selectors.siteHeaderSearchToggle).focus();
-  }
-
-  /**
-   * Remove the aria-attributes and hide the error messages
-   */
-  function hideErrorMessage() {
-    this.$searchErrorMessage.addClass(classes.hidden);
-    this.$searchResultInput
-      .removeAttr('aria-describedby')
-      .removeAttr('aria-invalid');
-  }
-
-  /**
-   * Add the aria-attributes and show the error messages
-   */
-  function showErrorMessage() {
-    this.$searchErrorMessage.removeClass(classes.hidden);
-    this.$searchResultInput
-      .attr('aria-describedby', 'error-search-form')
-      .attr('aria-invalid', true);
-  }
-
-  function validateSearchResultForm(evt) {
-    var isInputValueEmpty = this.$searchResultInput.val().trim().length === 0;
-
-    if (!isInputValueEmpty) {
-      hideErrorMessage.call(this);
-      return;
-    }
-
-    if (typeof evt !== 'undefined') {
-      evt.preventDefault();
-    }
-
-    searchFocus(this.$searchResultInput);
-    showErrorMessage.call(this);
+  function searchSubmit() {
+    $(selectors.searchSubmit).on('click', function(evt) {
+      var $el = $(evt.target);
+      var $input = $el.parents(selectors.search).find(selectors.searchInput);
+      if ($input.val().length === 0) {
+        evt.preventDefault();
+        searchFocus($input);
+      }
+    });
   }
 
   return {
@@ -1532,40 +1336,20 @@ theme.Search = (function() {
 theme.Slideshow = (function() {
   this.$slideshow = null;
   var classes = {
+    wrapper: 'slideshow-wrapper',
     slideshow: 'slideshow',
-    slickActiveMobile: 'slick-active-mobile',
-    controlsHover: 'slideshow__controls--hover',
+    currentSlide: 'slick-current',
+    video: 'slideshow__video',
+    videoBackground: 'slideshow__video--background',
+    closeVideoBtn: 'slideshow__video-control--close',
+    pauseButton: 'slideshow__pause',
     isPaused: 'is-paused'
   };
 
-  var selectors = {
-    section: '.shopify-section',
-    wrapper: '#SlideshowWrapper-',
-    slides: '.slideshow__slide',
-    textWrapperMobile: '.slideshow__text-wrap--mobile',
-    textContentMobile: '.slideshow__text-content--mobile',
-    controls: '.slideshow__controls',
-    pauseButton: '.slideshow__pause',
-    dots: '.slick-dots',
-    arrows: '.slideshow__arrows',
-    arrowsMobile: '.slideshow__arrows--mobile',
-    arrowLeft: '.slideshow__arrow-left',
-    arrowRight: '.slideshow__arrow-right'
-  };
-
-  function slideshow(el, sectionId) {
-    var $slideshow = (this.$slideshow = $(el));
-    this.adaptHeight = this.$slideshow.data('adapt-height');
-    this.$wrapper = this.$slideshow.closest(selectors.wrapper + sectionId);
-    this.$section = this.$wrapper.closest(selectors.section);
-    this.$controls = this.$wrapper.find(selectors.controls);
-    this.$arrows = this.$section.find(selectors.arrows);
-    this.$arrowsMobile = this.$section.find(selectors.arrowsMobile);
-    this.$pause = this.$controls.find(selectors.pauseButton);
-    this.$textWrapperMobile = this.$section.find(selectors.textWrapperMobile);
-    this.autorotate = this.$slideshow.data('autorotate');
-    var autoplaySpeed = this.$slideshow.data('speed');
-    var loadSlideA11yString = this.$slideshow.data('slide-nav-a11y');
+  function slideshow(el) {
+    this.$slideshow = $(el);
+    this.$wrapper = this.$slideshow.closest('.' + classes.wrapper);
+    this.$pause = this.$wrapper.find('.' + classes.pauseButton);
 
     this.settings = {
       accessibility: true,
@@ -1574,252 +1358,117 @@ theme.Slideshow = (function() {
       fade: true,
       draggable: true,
       touchThreshold: 20,
-      autoplay: this.autorotate,
-      autoplaySpeed: autoplaySpeed,
-      // eslint-disable-next-line shopify/jquery-dollar-sign-reference
-      appendDots: this.$arrows,
-      customPaging: function(slick, index) {
-        return (
-          '<a href="' +
-          selectors.wrapper +
-          sectionId +
-          '" aria-label="' +
-          loadSlideA11yString.replace('[slide_number]', index + 1) +
-          '" data-slide-number="' +
-          index +
-          '"></a>'
-        );
-      }
+      autoplay: this.$slideshow.data('autoplay'),
+      autoplaySpeed: this.$slideshow.data('speed')
     };
 
     this.$slideshow.on('beforeChange', beforeChange.bind(this));
-    this.$slideshow.on('init', slideshowA11ySetup.bind(this));
-
-    // Add class to style mobile dots & show the correct text content for the
-    // first slide on mobile when the slideshow initialises
-    this.$slideshow.on(
-      'init',
-      function() {
-        this.$mobileDots
-          .find('li:first-of-type')
-          .addClass(classes.slickActiveMobile);
-        this.showMobileText(0);
-      }.bind(this)
-    );
-
-    // Stop the autorotate when you scroll past the mobile controls, resume when
-    // they are scrolled back into view
-    if (this.autorotate) {
-      $(document).scroll(
-        $.debounce(
-          250,
-          function() {
-            if (
-              this.$arrowsMobile.offset().top +
-                this.$arrowsMobile.outerHeight() <
-              window.pageYOffset
-            ) {
-              $slideshow.slick('slickPause');
-            } else if (!this.$pause.hasClass(classes.isPaused)) {
-              $slideshow.slick('slickPlay');
-            }
-          }.bind(this)
-        )
-      );
-    }
-
-    if (this.adaptHeight) {
-      this.setSlideshowHeight();
-      $(window).resize($.debounce(50, this.setSlideshowHeight.bind(this)));
-    }
-
+    this.$slideshow.on('init', slideshowA11y.bind(this));
     this.$slideshow.slick(this.settings);
-
-    // This can't be called when the slick 'init' event fires due to how slick
-    // adds a11y features.
-    slideshowPostInitA11ySetup.bind(this)();
-
-    this.$arrows.find(selectors.arrowLeft).on('click', function() {
-      $slideshow.slick('slickPrev');
-    });
-    this.$arrows.find(selectors.arrowRight).on('click', function() {
-      $slideshow.slick('slickNext');
-    });
 
     this.$pause.on('click', this.togglePause.bind(this));
   }
 
-  function slideshowA11ySetup(event, obj) {
+  function slideshowA11y(event, obj) {
     var $slider = obj.$slider;
     var $list = obj.$list;
-    this.$dots = this.$section.find(selectors.dots);
-    this.$mobileDots = this.$dots.eq(1);
+    var $wrapper = this.$wrapper;
+    var autoplay = this.settings.autoplay;
 
     // Remove default Slick aria-live attr until slider is focused
     $list.removeAttr('aria-live');
 
-    this.$wrapper.on('keyup', keyboardNavigation.bind(this));
-    this.$controls.on('keyup', keyboardNavigation.bind(this));
-    this.$textWrapperMobile.on('keyup', keyboardNavigation.bind(this));
-
     // When an element in the slider is focused
     // pause slideshow and set aria-live.
-    this.$wrapper
-      .on(
-        'focusin',
-        function(evt) {
-          if (!this.$wrapper.has(evt.target).length) {
-            return;
-          }
+    $wrapper.on('focusin', function(evt) {
+      if (!$wrapper.has(evt.target).length) {
+        return;
+      }
 
-          $list.attr('aria-live', 'polite');
-          if (this.autorotate) {
-            $slider.slick('slickPause');
-          }
-        }.bind(this)
-      )
-      .on(
-        'focusout',
-        function(evt) {
-          if (!this.$wrapper.has(evt.target).length) {
-            return;
-          }
+      $list.attr('aria-live', 'polite');
 
-          $list.removeAttr('aria-live');
-          if (this.autorotate) {
-            // Only resume playing if the user hasn't paused using the pause
-            // button
-            if (!this.$pause.is('.is-paused')) {
-              $slider.slick('slickPlay');
-            }
-          }
-        }.bind(this)
-      );
+      if (autoplay) {
+        $slider.slick('slickPause');
+      }
+    });
+
+    // Resume autoplay
+    $wrapper.on('focusout', function(evt) {
+      if (!$wrapper.has(evt.target).length) {
+        return;
+      }
+
+      $list.removeAttr('aria-live');
+
+      if (autoplay) {
+        // Manual check if the focused element was the video close button
+        // to ensure autoplay does not resume when focus goes inside YouTube iframe
+        if ($(evt.target).hasClass(classes.closeVideoBtn)) {
+          return;
+        }
+
+        $slider.slick('slickPlay');
+      }
+    });
 
     // Add arrow key support when focused
-    if (this.$dots) {
-      this.$dots
-        .find('a')
-        .each(function() {
-          var $dot = $(this);
-          $dot.on('click keyup', function(evt) {
-            if (
-              evt.type === 'keyup' &&
-              evt.which !== slate.utils.keyboardKeys.ENTER
-            )
-              return;
+    if (obj.$dots) {
+      obj.$dots.on('keydown', function(evt) {
+        if (evt.which === 37) {
+          $slider.slick('slickPrev');
+        }
 
-            evt.preventDefault();
+        if (evt.which === 39) {
+          $slider.slick('slickNext');
+        }
 
-            var slideNumber = $(evt.target).data('slide-number');
-
-            $slider.attr('tabindex', -1).slick('slickGoTo', slideNumber);
-
-            if (evt.type === 'keyup') {
-              $slider.focus();
-            }
-          });
-        })
-        .eq(0)
-        .attr('aria-current', 'true');
-    }
-
-    this.$controls
-      .on('focusin', highlightControls.bind(this))
-      .on('focusout', unhighlightControls.bind(this));
-  }
-
-  function slideshowPostInitA11ySetup() {
-    var $slides = this.$slideshow.find(selectors.slides);
-
-    $slides.removeAttr('role').removeAttr('aria-labelledby');
-    this.$dots
-      .removeAttr('role')
-      .find('li')
-      .removeAttr('role')
-      .removeAttr('aria-selected')
-      .each(function() {
-        var $dot = $(this);
-        var ariaControls = $dot.attr('aria-controls');
-        $dot
-          .removeAttr('aria-controls')
-          .find('a')
-          .attr('aria-controls', ariaControls);
+        // Update focus on newly selected tab
+        if (evt.which === 37 || evt.which === 39) {
+          obj.$dots.find('.slick-active button').focus();
+        }
       });
+    }
   }
 
   function beforeChange(event, slick, currentSlide, nextSlide) {
-    var $dotLinks = this.$dots.find('a');
-    var $mobileDotLinks = this.$mobileDots.find('li');
+    var $slider = slick.$slider;
+    var $currentSlide = $slider.find('.' + classes.currentSlide);
+    var $nextSlide = $slider.find(
+      '.slideshow__slide[data-slick-index="' + nextSlide + '"]'
+    );
 
-    $dotLinks
-      .removeAttr('aria-current')
-      .eq(nextSlide)
-      .attr('aria-current', 'true');
-
-    $mobileDotLinks
-      .removeClass(classes.slickActiveMobile)
-      .eq(nextSlide)
-      .addClass(classes.slickActiveMobile);
-    this.showMobileText(nextSlide);
-  }
-
-  function keyboardNavigation() {
-    if (event.keyCode === slate.utils.keyboardKeys.LEFTARROW) {
-      this.$slideshow.slick('slickPrev');
+    if (isVideoInSlide($currentSlide)) {
+      var $currentVideo = $currentSlide.find('.' + classes.video);
+      var currentVideoId = $currentVideo.attr('id');
+      theme.SlideshowVideo.pauseVideo(currentVideoId);
+      $currentVideo.attr('tabindex', '-1');
     }
-    if (event.keyCode === slate.utils.keyboardKeys.RIGHTARROW) {
-      this.$slideshow.slick('slickNext');
+
+    if (isVideoInSlide($nextSlide)) {
+      var $video = $nextSlide.find('.' + classes.video);
+      var videoId = $video.attr('id');
+      var isBackground = $video.hasClass(classes.videoBackground);
+      if (isBackground) {
+        theme.SlideshowVideo.playVideo(videoId);
+      } else {
+        $video.attr('tabindex', '0');
+      }
     }
   }
 
-  function highlightControls() {
-    this.$controls.addClass(classes.controlsHover);
-  }
-
-  function unhighlightControls() {
-    this.$controls.removeClass(classes.controlsHover);
+  function isVideoInSlide($slide) {
+    return $slide.find('.' + classes.video).length;
   }
 
   slideshow.prototype.togglePause = function() {
     var slideshowSelector = getSlideshowId(this.$pause);
     if (this.$pause.hasClass(classes.isPaused)) {
-      this.$pause.removeClass(classes.isPaused).attr('aria-pressed', 'false');
-      if (this.autorotate) {
-        $(slideshowSelector).slick('slickPlay');
-      }
+      this.$pause.removeClass(classes.isPaused);
+      $(slideshowSelector).slick('slickPlay');
     } else {
-      this.$pause.addClass(classes.isPaused).attr('aria-pressed', 'true');
-      if (this.autorotate) {
-        $(slideshowSelector).slick('slickPause');
-      }
+      this.$pause.addClass(classes.isPaused);
+      $(slideshowSelector).slick('slickPause');
     }
-  };
-
-  slideshow.prototype.setSlideshowHeight = function() {
-    var minAspectRatio = this.$slideshow.data('min-aspect-ratio');
-    this.$slideshow.height($(document).width() / minAspectRatio);
-  };
-
-  slideshow.prototype.showMobileText = function(slideIndex) {
-    var $allTextContent = this.$textWrapperMobile.find(
-      selectors.textContentMobile
-    );
-    var currentTextContentSelector =
-      selectors.textContentMobile + '-' + slideIndex;
-    var $currentTextContent = this.$textWrapperMobile.find(
-      currentTextContentSelector
-    );
-    if (
-      !$currentTextContent.length &&
-      this.$slideshow.find(selectors.slides).length === 1
-    ) {
-      this.$textWrapperMobile.hide();
-    } else {
-      this.$textWrapperMobile.show();
-    }
-    $allTextContent.hide();
-    $currentTextContent.show();
   };
 
   function getSlideshowId($el) {
@@ -1829,23 +1478,513 @@ theme.Slideshow = (function() {
   return slideshow;
 })();
 
-window.theme = window.theme || {};
+// Youtube API callback
+// eslint-disable-next-line no-unused-vars
+function onYouTubeIframeAPIReady() {
+  theme.SlideshowVideo.loadVideos();
+}
 
-theme.FormStatus = (function() {
-  var selectors = {
-    statusMessage: '[data-form-status]'
+theme.SlideshowVideo = (function() {
+  var autoplayCheckComplete = false;
+  var autoplayAvailable = false;
+  var playOnClickChecked = false;
+  var playOnClick = false;
+  var youtubeLoaded = false;
+  var videos = {};
+  var videoPlayers = [];
+  var videoOptions = {
+    ratio: 16 / 9,
+    playerVars: {
+      // eslint-disable-next-line camelcase
+      iv_load_policy: 3,
+      modestbranding: 1,
+      autoplay: 0,
+      controls: 0,
+      showinfo: 0,
+      wmode: 'opaque',
+      branding: 0,
+      autohide: 0,
+      rel: 0
+    },
+    events: {
+      onReady: onPlayerReady,
+      onStateChange: onPlayerChange
+    }
+  };
+  var classes = {
+    playing: 'video-is-playing',
+    paused: 'video-is-paused',
+    loading: 'video-is-loading',
+    loaded: 'video-is-loaded',
+    slideshowWrapper: 'slideshow-wrapper',
+    slide: 'slideshow__slide',
+    slideBackgroundVideo: 'slideshow__slide--background-video',
+    slideDots: 'slick-dots',
+    videoChrome: 'slideshow__video--chrome',
+    videoBackground: 'slideshow__video--background',
+    playVideoBtn: 'slideshow__video-control--play',
+    closeVideoBtn: 'slideshow__video-control--close',
+    currentSlide: 'slick-current',
+    slickClone: 'slick-cloned',
+    supportsAutoplay: 'autoplay',
+    supportsNoAutoplay: 'no-autoplay'
   };
 
-  function init() {
-    this.$statusMessage = $(selectors.statusMessage);
+  /**
+    * Public functions
+   */
+  function init($video) {
+    if (!$video.length) {
+      return;
+    }
 
-    if (!this.$statusMessage) return;
+    videos[$video.attr('id')] = {
+      id: $video.attr('id'),
+      videoId: $video.data('id'),
+      type: $video.data('type'),
+      status: $video.data('type') === 'chrome' ? 'closed' : 'background', // closed, open, background
+      videoSelector: $video.attr('id'),
+      $parentSlide: $video.closest('.' + classes.slide),
+      $parentSlideshowWrapper: $video.closest('.' + classes.slideshowWrapper),
+      controls: $video.data('type') === 'background' ? 0 : 1,
+      slideshow: $video.data('slideshow')
+    };
 
-    this.$statusMessage.focus();
+    if (!youtubeLoaded) {
+      // This code loads the IFrame Player API code asynchronously.
+      var tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      var firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    }
+  }
+
+  function customPlayVideo(playerId) {
+    // Do not autoplay just because the slideshow asked you to.
+    // If the slideshow asks to play a video, make sure
+    // we have done the playOnClick check first
+    if (!playOnClickChecked && !playOnClick) {
+      return;
+    }
+
+    if (playerId && typeof videoPlayers[playerId].playVideo === 'function') {
+      privatePlayVideo(playerId);
+    }
+  }
+
+  function pauseVideo(playerId) {
+    if (
+      videoPlayers[playerId] &&
+      typeof videoPlayers[playerId].pauseVideo === 'function'
+    ) {
+      videoPlayers[playerId].pauseVideo();
+    }
+  }
+
+  function loadVideos() {
+    for (var key in videos) {
+      if (videos.hasOwnProperty(key)) {
+        var args = $.extend({}, videoOptions, videos[key]);
+        args.playerVars.controls = args.controls;
+        videoPlayers[key] = new YT.Player(key, args);
+      }
+    }
+
+    initEvents();
+    youtubeLoaded = true;
+  }
+
+  function loadVideo(key) {
+    if (!youtubeLoaded) {
+      return;
+    }
+    var args = $.extend({}, videoOptions, videos[key]);
+    args.playerVars.controls = args.controls;
+    videoPlayers[key] = new YT.Player(key, args);
+
+    initEvents();
+  }
+
+  /**
+    * Private functions
+   */
+
+  function privatePlayVideo(id, clicked) {
+    var videoData = videos[id];
+    var player = videoPlayers[id];
+    var $slide = videos[id].$parentSlide;
+
+    if (playOnClick) {
+      // playOnClick means we are probably on mobile (no autoplay).
+      // setAsPlaying will show the iframe, requiring another click
+      // to play the video.
+      setAsPlaying(videoData);
+    } else if (clicked || (autoplayCheckComplete && autoplayAvailable)) {
+      // Play if autoplay is available or clicked to play
+      $slide.removeClass(classes.loading);
+      setAsPlaying(videoData);
+      player.playVideo();
+      return;
+    }
+
+    // Check for autoplay if not already done
+    if (!autoplayCheckComplete) {
+      autoplayCheckFunction(player, $slide);
+    }
+  }
+
+  function setAutoplaySupport(supported) {
+    var supportClass = supported
+      ? classes.supportsAutoplay
+      : classes.supportsNoAutoplay;
+    $(document.documentElement).addClass(supportClass);
+
+    if (!supported) {
+      playOnClick = true;
+    }
+
+    autoplayCheckComplete = true;
+  }
+
+  function autoplayCheckFunction(player, $slide) {
+    // attempt to play video
+    player.playVideo();
+
+    autoplayTest(player)
+      .then(function() {
+        setAutoplaySupport(true);
+      })
+      .fail(function() {
+        // No autoplay available (or took too long to start playing).
+        // Show fallback image. Stop video for safety.
+        setAutoplaySupport(false);
+        player.stopVideo();
+      })
+      .always(function() {
+        autoplayCheckComplete = true;
+        $slide.removeClass(classes.loading);
+      });
+  }
+
+  function autoplayTest(player) {
+    var deferred = $.Deferred();
+    var wait;
+    var timeout;
+
+    wait = setInterval(function() {
+      if (player.getCurrentTime() <= 0) {
+        return;
+      }
+
+      autoplayAvailable = true;
+      clearInterval(wait);
+      clearTimeout(timeout);
+      deferred.resolve();
+    }, 500);
+
+    timeout = setTimeout(function() {
+      clearInterval(wait);
+      deferred.reject();
+    }, 4000); // subjective. test up to 8 times over 4 seconds
+
+    return deferred;
+  }
+
+  function playOnClickCheck() {
+    // Bail early for a few instances:
+    // - small screen
+    // - device sniff mobile browser
+
+    if (playOnClickChecked) {
+      return;
+    }
+
+    if ($(window).width() < 750) {
+      playOnClick = true;
+    } else if (window.mobileCheck()) {
+      playOnClick = true;
+    }
+
+    if (playOnClick) {
+      // No need to also do the autoplay check
+      setAutoplaySupport(false);
+    }
+
+    playOnClickChecked = true;
+  }
+
+  // The API will call this function when each video player is ready
+  function onPlayerReady(evt) {
+    evt.target.setPlaybackQuality('hd1080');
+    var videoData = getVideoOptions(evt);
+
+    playOnClickCheck();
+
+    // Prevent tabbing through YouTube player controls until visible
+    $('#' + videoData.id).attr('tabindex', '-1');
+
+    sizeBackgroundVideos();
+
+    // Customize based on options from the video ID
+    switch (videoData.type) {
+      case 'background-chrome':
+      case 'background':
+        evt.target.mute();
+        // Only play the video if it is in the active slide
+        if (videoData.$parentSlide.hasClass(classes.currentSlide)) {
+          privatePlayVideo(videoData.id);
+        }
+        break;
+    }
+
+    videoData.$parentSlide.addClass(classes.loaded);
+  }
+
+  function onPlayerChange(evt) {
+    var videoData = getVideoOptions(evt);
+
+    switch (evt.data) {
+      case 0: // ended
+        setAsFinished(videoData);
+        break;
+      case 1: // playing
+        setAsPlaying(videoData);
+        break;
+      case 2: // paused
+        setAsPaused(videoData);
+        break;
+    }
+  }
+
+  function setAsFinished(videoData) {
+    switch (videoData.type) {
+      case 'background':
+        videoPlayers[videoData.id].seekTo(0);
+        break;
+      case 'background-chrome':
+        videoPlayers[videoData.id].seekTo(0);
+        closeVideo(videoData.id);
+        break;
+      case 'chrome':
+        closeVideo(videoData.id);
+        break;
+    }
+  }
+
+  function setAsPlaying(videoData) {
+    var $slideshow = videoData.$parentSlideshowWrapper;
+    var $slide = videoData.$parentSlide;
+
+    $slide.removeClass(classes.loading);
+
+    // Do not change element visibility if it is a background video
+    if (videoData.status === 'background') {
+      return;
+    }
+
+    $('#' + videoData.id).attr('tabindex', '0');
+
+    switch (videoData.type) {
+      case 'chrome':
+      case 'background-chrome':
+        $slideshow.removeClass(classes.paused).addClass(classes.playing);
+        $slide.removeClass(classes.paused).addClass(classes.playing);
+        break;
+    }
+
+    // Update focus to the close button so we stay within the slide
+    $slide.find('.' + classes.closeVideoBtn).focus();
+  }
+
+  function setAsPaused(videoData) {
+    var $slideshow = videoData.$parentSlideshowWrapper;
+    var $slide = videoData.$parentSlide;
+
+    if (videoData.type === 'background-chrome') {
+      closeVideo(videoData.id);
+      return;
+    }
+
+    // YT's events fire after our click event. This status flag ensures
+    // we don't interact with a closed or background video.
+    if (videoData.status !== 'closed' && videoData.type !== 'background') {
+      $slideshow.addClass(classes.paused);
+      $slide.addClass(classes.paused);
+    }
+
+    if (videoData.type === 'chrome' && videoData.status === 'closed') {
+      $slideshow.removeClass(classes.paused);
+      $slide.removeClass(classes.paused);
+    }
+
+    $slideshow.removeClass(classes.playing);
+    $slide.removeClass(classes.playing);
+  }
+
+  function closeVideo(playerId) {
+    var videoData = videos[playerId];
+    var $slideshow = videoData.$parentSlideshowWrapper;
+    var $slide = videoData.$parentSlide;
+    var classesToRemove = [classes.pause, classes.playing].join(' ');
+
+    $('#' + videoData.id).attr('tabindex', '-1');
+
+    videoData.status = 'closed';
+
+    switch (videoData.type) {
+      case 'background-chrome':
+        videoPlayers[playerId].mute();
+        setBackgroundVideo(playerId);
+        break;
+      case 'chrome':
+        videoPlayers[playerId].stopVideo();
+        setAsPaused(videoData); // in case the video is already paused
+        break;
+    }
+
+    $slideshow.removeClass(classesToRemove);
+    $slide.removeClass(classesToRemove);
+  }
+
+  function getVideoOptions(evt) {
+    return videos[evt.target.h.id];
+  }
+
+  function startVideoOnClick(playerId) {
+    var videoData = videos[playerId];
+    // add loading class to slide
+    videoData.$parentSlide.addClass(classes.loading);
+
+    videoData.status = 'open';
+
+    switch (videoData.type) {
+      case 'background-chrome':
+        unsetBackgroundVideo(playerId, videoData);
+        videoPlayers[playerId].unMute();
+        privatePlayVideo(playerId, true);
+        break;
+      case 'chrome':
+        privatePlayVideo(playerId, true);
+        break;
+    }
+
+    // esc to close video player
+    $(document).on('keydown.videoPlayer', function(evt) {
+      if (evt.keyCode === 27) {
+        closeVideo(playerId);
+      }
+    });
+  }
+
+  function sizeBackgroundVideos() {
+    $('.' + classes.videoBackground).each(function(index, el) {
+      sizeBackgroundVideo($(el));
+    });
+  }
+
+  function sizeBackgroundVideo($player) {
+    var $slide = $player.closest('.' + classes.slide);
+    // Ignore cloned slides
+    if ($slide.hasClass(classes.slickClone)) {
+      return;
+    }
+    var slideWidth = $slide.width();
+    var playerWidth = $player.width();
+    var playerHeight = $player.height();
+
+    // when screen aspect ratio differs from video, video must center and underlay one dimension
+    if (slideWidth / videoOptions.ratio < playerHeight) {
+      playerWidth = Math.ceil(playerHeight * videoOptions.ratio); // get new player width
+      $player
+        .width(playerWidth)
+        .height(playerHeight)
+        .css({
+          left: (slideWidth - playerWidth) / 2,
+          top: 0
+        }); // player width is greater, offset left; reset top
+    } else {
+      // new video width < window width (gap to right)
+      playerHeight = Math.ceil(slideWidth / videoOptions.ratio); // get new player height
+      $player
+        .width(slideWidth)
+        .height(playerHeight)
+        .css({
+          left: 0,
+          top: (playerHeight - playerHeight) / 2
+        }); // player height is greater, offset top; reset left
+    }
+
+    $player.prepareTransition().addClass(classes.loaded);
+  }
+
+  function unsetBackgroundVideo(playerId) {
+    // Switch the background-chrome to a chrome-only player once played
+    $('#' + playerId)
+      .removeAttr('style')
+      .removeClass(classes.videoBackground)
+      .addClass(classes.videoChrome);
+
+    videos[playerId].$parentSlideshowWrapper
+      .removeClass(classes.slideBackgroundVideo)
+      .addClass(classes.playing);
+
+    videos[playerId].$parentSlide
+      .removeClass(classes.slideBackgroundVideo)
+      .addClass(classes.playing);
+
+    videos[playerId].status = 'open';
+  }
+
+  function setBackgroundVideo(playerId) {
+    // Switch back to background-chrome when closed
+    var $player = $('#' + playerId)
+      .addClass(classes.videoBackground)
+      .removeClass(classes.videoChrome);
+
+    videos[playerId].$parentSlide.addClass(classes.slideBackgroundVideo);
+
+    videos[playerId].status = 'background';
+    sizeBackgroundVideo($player);
+  }
+
+  function initEvents() {
+    $(document).on('click.videoPlayer', '.' + classes.playVideoBtn, function(
+      evt
+    ) {
+      var playerId = $(evt.currentTarget).data('controls');
+      startVideoOnClick(playerId);
+    });
+
+    $(document).on('click.videoPlayer', '.' + classes.closeVideoBtn, function(
+      evt
+    ) {
+      var playerId = $(evt.currentTarget).data('controls');
+      closeVideo(playerId);
+    });
+
+    // Listen to resize to keep a background-size:cover-like layout
+    $(window).on(
+      'resize.videoPlayer',
+      $.debounce(250, function() {
+        if (youtubeLoaded) {
+          sizeBackgroundVideos();
+        }
+      })
+    );
+  }
+
+  function removeEvents() {
+    $(document).off('.videoPlayer');
+    $(window).off('.videoPlayer');
   }
 
   return {
-    init: init
+    init: init,
+    loadVideos: loadVideos,
+    loadVideo: loadVideo,
+    playVideo: customPlayVideo,
+    pauseVideo: pauseVideo,
+    removeEvents: removeEvents
   };
 })();
 
@@ -2002,12 +2141,8 @@ window.theme = window.theme || {};
 
 theme.Cart = (function() {
   var selectors = {
-    edit: '.js-edit-toggle',
-    inputQty: '.cart__qty-input',
-    thumbnails: '.cart__image',
-    item: '.cart__row'
+    edit: '.js-edit-toggle'
   };
-
   var config = {
     showClass: 'cart__update--show',
     showEditClass: 'cart__edit--active',
@@ -2017,18 +2152,12 @@ theme.Cart = (function() {
   function Cart(container) {
     this.$container = $(container);
     this.$edit = $(selectors.edit, this.$container);
-    this.$inputQuantities = $(selectors.inputQty, this.$container);
-    this.$thumbnails = $(selectors.thumbnails, this.$container);
 
     if (!this.cookiesEnabled()) {
       this.$container.addClass(config.cartNoCookies);
     }
 
-    this.$edit.on('click', this._onEditClick);
-    this.$inputQuantities.on('change', this._handleInputQty);
-
-    this.$thumbnails.css('cursor', 'pointer');
-    this.$thumbnails.on('click', this._handleThumbnailClick);
+    this.$edit.on('click', this._onEditClick.bind(this));
   }
 
   Cart.prototype = _.assignIn({}, Cart.prototype, {
@@ -2039,26 +2168,9 @@ theme.Cart = (function() {
     _onEditClick: function(evt) {
       var $evtTarget = $(evt.target);
       var $updateLine = $('.' + $evtTarget.data('target'));
-      var isExpanded = $evtTarget.attr('aria-expanded') === 'true';
 
-      $evtTarget
-        .toggleClass(config.showEditClass)
-        .attr('aria-expanded', !isExpanded);
+      $evtTarget.toggleClass(config.showEditClass);
       $updateLine.toggleClass(config.showClass);
-    },
-
-    _handleInputQty: function(evt) {
-      var $input = $(evt.target);
-      var value = $input.val();
-      var itemKey = $input.data('quantity-item');
-      var $itemQtyInputs = $('[data-quantity-item=' + itemKey + ']');
-      $itemQtyInputs.val(value);
-    },
-
-    _handleThumbnailClick: function(evt) {
-      var url = $(evt.target).data('item-url');
-
-      window.location.href = url;
     },
 
     cookiesEnabled: function() {
@@ -2075,21 +2187,68 @@ theme.Cart = (function() {
   return Cart;
 })();
 
+  theme.cart = {
+    getCart: function() {
+      return $.getJSON(theme.routes.cart);
+    },
+  
+    changeItem: function(key, qty) {
+      return this._updateCart({
+        type: 'POST',
+        url: theme.routes.cartChange,
+        data: 'quantity=' + qty + '&id=' + key,
+        dataType: 'json'
+      });
+    },
+  
+    addItemFromForm: function(data) {
+      return this._updateCart({
+        type: 'POST',
+        url: theme.routes.cartAdd,
+        data: data,
+        dataType: 'json'
+      });
+    },
+  
+    _updateCart: function(params) {
+      return $.ajax(params)
+        .then(function(cart) {
+          return cart;
+        }.bind(this))
+    },
+  
+    updateNote: function(note) {
+      var params = {
+        type: 'POST',
+        url: '/cart/update.js',
+        data: 'note=' + theme.cart.attributeToString(note),
+        dataType: 'json',
+        success: function(cart) {},
+        error: function(XMLHttpRequest, textStatus) {}
+      };
+  
+      $.ajax(params);
+    },
+  
+    attributeToString: function(attribute) {
+      if ((typeof attribute) !== 'string') {
+        attribute += '';
+        if (attribute === 'undefined') {
+          attribute = '';
+        }
+      }
+      return $.trim(attribute);
+    }
+  }
+
 window.theme = window.theme || {};
 
 theme.Filters = (function() {
-  var settings = {
-    // Breakpoints from src/stylesheets/global/variables.scss.liquid
-    mediaQueryMediumUp: 'screen and (min-width: 750px)'
-  };
-
   var constants = {
     SORT_BY: 'sort_by'
   };
-
   var selectors = {
-    mainContent: '#MainContent',
-    filterSelection: '#FilterTags',
+    filterSelection: '#SortTags',
     sortSelection: '#SortBy',
     defaultSort: '#DefaultSortBy'
   };
@@ -2104,52 +2263,48 @@ theme.Filters = (function() {
     );
 
     this.defaultSort = this._getDefaultSortValue();
+    this._resizeSelect(this.$selects);
     this.$selects.removeClass('hidden');
 
     this.$filterSelect.on('change', this._onFilterChange.bind(this));
     this.$sortSelect.on('change', this._onSortChange.bind(this));
-    this._initBreakpoints();
   }
 
   Filters.prototype = _.assignIn({}, Filters.prototype, {
-    _initBreakpoints: function() {
-      var self = this;
-
-      enquire.register(settings.mediaQueryMediumUp, {
-        match: function() {
-          self._resizeSelect(self.$selects);
-        }
-      });
-    },
-
-    _onSortChange: function() {
+    _onSortChange: function(evt) {
       var sort = this._sortValue();
-      var url = window.location.href.replace(window.location.search, '');
-      var queryStringValue = slate.utils.getParameterByName('q');
-      var query = queryStringValue !== null ? queryStringValue : '';
-
       if (sort.length) {
-        var urlStripped = url.replace(window.location.hash, '');
-        query = query !== '' ? '?q=' + query + '&' : '?';
-
-        window.location.href =
-          urlStripped + query + sort + selectors.mainContent;
+        window.location.search = sort;
       } else {
         // clean up our url if the sort value is blank for default
-        window.location.href = url;
+        window.location.href = window.location.href.replace(
+          window.location.search,
+          ''
+        );
       }
+      this._resizeSelect($(evt.target));
     },
 
-    _onFilterChange: function() {
+    _onFilterChange: function(evt) {
       var filter = this._getFilterValue();
 
       // remove the 'page' parameter to go to the first page of results
       var search = document.location.search.replace(/\?(page=\w+)?&?/, '');
 
-      // only add the search parameters to the url if they exist
-      search = search !== '' ? '?' + search : '';
+      if (Shopify.designMode) {
+        if (search.match('sort_by')) {
+          search = search.substring(search.indexOf('sort_by'));
+        } else {
+          search = '';
+        }
+      }
 
-      document.location.href = filter + search + selectors.mainContent;
+      // restore the selected sorting order
+      if (search.match(constants.SORT_BY)) {
+        search = '?' + search;
+      }
+      document.location.href = filter + search;
+      this._resizeSelect($(evt.target));
     },
 
     _getFilterValue: function() {
@@ -2205,16 +2360,75 @@ theme.Filters = (function() {
 window.theme = window.theme || {};
 
 theme.HeaderSection = (function() {
+
+    var selectors = {
+      drawer: '#NavDrawer',
+      mobileSubNavToggle: '.mobile-nav__toggle-btn',
+      hasSublist: '.mobile-nav__has-sublist',
+      disclosureLocale: '[data-disclosure-locale]',
+      disclosureCurrency: '[data-disclosure-currency]'
+    };
+  
+    var classes = {
+      navExpanded: 'mobile-nav--expanded'
+    };
+	
   function Header() {
     theme.Header.init();
-    theme.MobileNav.init();
+	
+	//added
+    this.initDrawers();
+    
+	theme.MobileNav.init();
     theme.Search.init();
   }
 
   Header.prototype = _.assignIn({}, Header.prototype, {
     onUnload: function() {
       theme.Header.unload();
-    }
+    },
+	
+	//added
+	  initDrawers: function() {
+		theme.NavDrawer = new theme.Drawers('NavDrawer', 'nav');
+		if (theme.settings.cartType === 'drawer') {
+		  new theme.CartDrawer();
+		  console.log("Cart Drawer init");
+		}
+
+		this.drawerMenuButtons();
+	  },
+      drawerMenuButtons: function() {
+        $(selectors.drawer).find('.js-drawer-close').on('click', function(evt){
+          evt.preventDefault();
+          theme.NavDrawer.close();
+        });
+  
+        var $mobileSubNavToggle = $(selectors.mobileSubNavToggle);
+  
+        $mobileSubNavToggle.attr('aria-expanded', 'false');
+        $mobileSubNavToggle.each(function (i, el) {
+          var $el = $(el);
+          $el.attr('aria-controls', $el.attr('data-aria-controls'));
+        });
+  
+        $mobileSubNavToggle.on('click', function() {
+          var $el = $(this);
+          var currentlyExpanded = $el.attr('aria-expanded');
+          var toggleState = false;
+  
+          // Updated aria-expanded value based on state pre-click
+          if (currentlyExpanded === 'true') {
+            $el.attr('aria-expanded', 'false');
+          } else {
+            $el.attr('aria-expanded', 'true');
+            toggleState = true;
+          }
+  
+          // Toggle class that expands/collapses sublist
+          $el.closest(selectors.hasSublist).toggleClass(classes.navExpanded, toggleState);
+        });
+      },
   });
 
   return Header;
@@ -2397,6 +2611,352 @@ theme.Maps = (function() {
   return Map;
 })();
 
+//added
+
+  theme.QtySelector = (function() {
+    var classes = {
+      input: '.js-qty__num',
+      plus: '.js-qty__adjust--plus',
+      minus: '.js-qty__adjust--minus'
+    };
+  
+    function QtySelector($el, options) {
+      this.$wrapper = $el;
+      this.$input = $el.find(classes.input);
+      this.$plus = $el.find(classes.plus);
+      this.$minus = $el.find(classes.minus);
+      this.minValue = this.$input.attr('min') || 1;
+  
+      var defaults = {
+        namespace: null,
+        key: this.$input.data('id')
+      };
+  
+      this.options = $.extend(defaults, options);
+  
+      this.initEventListeners();
+    };
+  
+    QtySelector.prototype = $.extend({}, QtySelector.prototype, {
+      initEventListeners: function() {
+        this.$plus.on('click', function() {
+          var qty = this.validateQty(this.$input.val());
+          this.addQty(qty);
+        }.bind(this));
+  
+        this.$minus.on('click', function() {
+          var qty = this.validateQty(this.$input.val());
+          this.subtractQty(qty);
+        }.bind(this));
+  
+        this.$input.on('change', function() {
+          var qty = this.validateQty(this.$input.val());
+          this.changeQty(qty);
+        }.bind(this));
+      },
+  
+      addQty: function(number) {
+        var qty = number + 1;
+        this.changeQty(qty);
+      },
+  
+      subtractQty: function(number) {
+        var qty = number - 1;
+        if (qty <= this.minValue) {
+          qty = this.minValue;
+        }
+        this.changeQty(qty);
+      },
+  
+      changeQty: function(qty) {
+        this.$input.val(qty);
+        $('body').trigger('qty' + this.options.namespace, [this.options.key, qty]);
+      },
+  
+      validateQty: function(number) {
+        if((parseFloat(number) == parseInt(number)) && !isNaN(number)) {
+          // We have a valid number!
+        } else {
+          // Not a number. Default to 1.
+          number = 1;
+        }
+        return parseInt(number);
+      }
+    });
+  
+    return QtySelector;
+  })();
+  
+  theme.CartDrawer = (function() {
+    var config = {
+      namespace: '.ajaxcart'
+    };
+  
+    var selectors = {
+      drawer: '#CartDrawer',
+      container: '#CartContainer',
+      template: '#CartTemplate',
+      cartBubble: '.cart-link__bubble'
+    };
+  
+    function CartDrawer() {
+      this.status = {
+        loaded: false,
+        loading: false
+      };
+  
+      this.drawer = new theme.Drawers('CartDrawer', 'cart');
+  
+      // Prep handlebars template
+      var source = $(selectors.template).html();
+      this.template = Handlebars.compile(source);
+  
+      // Build cart on page load so it's ready in the drawer
+      theme.cart.getCart().then(this.buildCart.bind(this));
+  
+      this.initEventListeners();
+    };
+  
+    CartDrawer.prototype = $.extend({}, CartDrawer.prototype, {
+      initEventListeners: function() {
+        $('body').on('updateCart' + config.namespace, this.initQtySelectors.bind(this));
+        $('body').on('updateCart' + config.namespace, this.updateCartNotification.bind(this));
+  
+        $('body').on('added.ajaxProduct', function(evt, returnFocusEl) {
+          theme.cart.getCart().then(function(cart) {
+            this.buildCart(cart, true, returnFocusEl);
+          }.bind(this));
+        }.bind(this));
+        
+        
+        $('body').on('added.ajaxProductQuick', function(evt, returnFocusEl) {
+          theme.cart.getCart().then(function(cart) {
+            this.buildCart(cart, false, returnFocusEl);
+          }.bind(this));
+        }.bind(this));        
+        
+      },
+  
+      buildCart: function(cart, openDrawer, returnFocusEl) {
+        this.loading(true);
+        this.emptyCart();
+  
+        if (cart.item_count === 0) {
+          $(selectors.container).append('<div class="drawer__scrollable"><p>Your cart is empty.</p></div>');
+        } else {
+          var items = [];
+          var item = {};
+          var data = {};
+  
+          $.each(cart.items, function(index, product) {
+  
+            var prodImg;
+            if (product.image !== null) {
+              prodImg = product.image.replace(/(\.[^.]*)$/, "_180x$1");
+            } else {
+              prodImg = '//cdn.shopify.com/s/assets/admin/no-image-medium-cc9732cb976dd349a0df1d39816fbcc7.gif';
+            }
+  
+            if (product.properties !== null) {
+              $.each(product.properties, function(key, value) {
+                if (key.charAt(0) === '_' || !value) {
+                   delete product.properties[key];
+                 }
+              });
+            }
+  
+            // If we have line-item discount, add formattedAmount to discount object
+            var amount = 0;
+            if (product.line_level_discount_allocations.length !== 0) {
+              for (var discount in product.line_level_discount_allocations) {
+                amount = product.line_level_discount_allocations[discount].amount;
+  
+                product.line_level_discount_allocations[discount].formattedAmount = theme.Currency.formatMoney(amount, theme.settings.moneyFormat);
+              }
+            }
+ 
+  
+            item = {
+              key: product.key,
+              url: product.url,
+              img: prodImg,
+              name: product.product_title,
+              variation: product.variant_title,
+              properties: product.properties,
+              itemQty: product.quantity,
+              price: theme.Currency.formatMoney(product.price, theme.settings.moneyFormat),
+              unitPrice: theme.Currency.formatMoney(product.unit_price, theme.settings.moneyFormat),
+              unitBase: theme.Currency.getBaseUnit(product),
+              discountedPrice: theme.Currency.formatMoney((product.price - (product.total_discount/product.quantity)), theme.settings.moneyFormat),
+              discounts: product.line_level_discount_allocations,
+              discountsApplied: product.line_level_discount_allocations.length === 0 ? false : true,
+              vendor: product.vendor
+            };
+  
+            items.push(item);
+          });
+ 
+  
+          // If we have cart discount, add a formattedAmount to the discount object
+          var cartAmount = 0;
+          if (cart.cart_level_discount_applications.length !== 0) {
+            for (var cartDiscount in cart.cart_level_discount_applications) {
+              cartAmount = cart.cart_level_discount_applications[cartDiscount].total_allocated_amount;
+  
+              cart.cart_level_discount_applications[cartDiscount].formattedAmount = theme.Currency.formatMoney(cartAmount,theme.settings.moneyFormat);
+            }
+          }
+  
+          data = {
+            items: items,
+            note: cart.note,
+            cartDiscounts: cart.cart_level_discount_applications,
+            cartDiscountsApplied: cart.cart_level_discount_applications.length === 0 ? false : true,
+            totalPrice: theme.Currency.formatMoney(cart.total_price, theme.settings.moneyFormat)
+          };
+  
+          $(selectors.container).append(this.template(data));
+        }
+  
+        this.status.loaded = true;
+        this.loading(false);
+  
+        $('body').trigger('updateCart' + config.namespace, cart);
+  
+        if (window.Shopify && Shopify.StorefrontExpressButtons) {
+          Shopify.StorefrontExpressButtons.initialize();
+        }
+  
+        // If specifically asked, open the cart drawer (only happens after product added from form)
+        if (openDrawer === true) {
+          this.drawer.open(false, returnFocusEl);
+        }
+        
+        $("#CartCount > span:first-child").html(cart.item_count);
+      
+      },
+  
+      initQtySelectors: function() {
+        $(selectors.container).find('.js-qty__wrapper').each(function(index, el) {
+          var selector = new theme.QtySelector($(el), {
+            namespace: '.cart-drawer'
+          });
+        }.bind(this));
+  
+        $('body').on('qty.cart-drawer', this.updateItem.bind(this));
+      },
+  
+      updateItem: function(evt, key, qty) {
+        if (this.status.loading) {
+          return;
+        }
+  
+        this.loading(true);
+  
+        theme.cart.changeItem(key, qty)
+          .then(function(cart) {
+            this.updateSuccess(cart);
+          }.bind(this))
+          .always(function() {
+            this.loading(false);
+          }.bind(this));
+      },
+  
+      loading: function(state) {
+        this.status.loading = state;
+  
+        if (state) {
+          $(selectors.container).addClass('is-loading');
+        } else {
+          $(selectors.container).removeClass('is-loading');
+        }
+      },
+  
+      emptyCart: function() {
+        $(selectors.container).empty();
+      },
+  
+      updateSuccess: function(cart) {
+        this.buildCart(cart)
+      },
+  
+      updateError: function(XMLHttpRequest) {
+        if (XMLHttpRequest.responseJSON && XMLHttpRequest.responseJSON.description) {
+          // console.warn(XMLHttpRequest.responseJSON.description);
+        }
+      },
+  
+      updateCartNotification: function(evt, cart) {
+        if (cart.items.length > 0) {
+          $(selectors.cartBubble).addClass('cart-link__bubble--visible');
+        } else {
+          $(selectors.cartBubble).removeClass('cart-link__bubble--visible');
+        }
+      }
+    });
+  
+    return CartDrawer;
+  })();
+  
+  theme.AjaxProduct = (function() {
+    var status = {
+      loading: false
+    };
+  
+    function ProductForm($form) {
+      this.$form = $form;
+      this.$addToCart = this.$form.find('.add-to-cart');
+  
+      if (this.$form.length) {
+        this.$form.on('submit', this.addItemFromForm.bind(this));
+      }
+    };
+  
+    ProductForm.prototype = $.extend({}, ProductForm.prototype, {
+      addItemFromForm: function(evt, callback){
+        evt.preventDefault();
+  
+        if (status.loading) {
+          return;
+        }
+  
+        // Loading indicator on add to cart button
+        this.$addToCart.addClass('btn--loading');
+  
+        status.loading = true;
+  
+        var data = this.$form.serialize();
+  
+        theme.cart.addItemFromForm(data)
+          .then(function(product) {
+            this.success(product);
+          }.bind(this))
+          .always(function() {
+            status.loading = false;
+            this.$addToCart.removeClass('btn--loading');
+          }.bind(this));
+      },
+  
+      success: function(product) {
+		  console.log('success');
+        this.$form.find('.errors').remove();
+        $('body').trigger('added.ajaxProduct', this.$addToCart);
+      },
+  
+      error: function(XMLHttpRequest) {
+        this.$form.find('.errors').remove();
+  
+        if (XMLHttpRequest.responseJSON && XMLHttpRequest.responseJSON.description) {
+          this.$form.prepend('<div class="errors text-center">' + XMLHttpRequest.responseJSON.description + '</div>');
+        }
+      }
+    });
+  
+    return ProductForm;
+  })();
+
+////
+
 /* eslint-disable no-new */
 theme.Product = (function() {
   function Product(container) {
@@ -2418,28 +2978,19 @@ theme.Product = (function() {
     this.selectors = {
       addToCart: '#AddToCart-' + sectionId,
       addToCartText: '#AddToCartText-' + sectionId,
-      errorQuantityMessage: '#error-quantity-' + sectionId,
-      quantity: '#Quantity-' + sectionId,
+      comparePrice: '#ComparePrice-' + sectionId,
+      originalPrice: '#ProductPrice-' + sectionId,
       SKU: '.variant-sku',
-      productStatus: '[data-product-status]',
+      originalPriceWrapper: '.product-price__price-' + sectionId,
       originalSelectorId: '#ProductSelect-' + sectionId,
       productImageWraps: '.product-single__photo',
+      productPrices: '.product-single__price-' + sectionId,
       productThumbImages: '.product-single__thumbnail--' + sectionId,
       productThumbs: '.product-single__thumbnails-' + sectionId,
-      productFeaturedImage: '.product-featured-img',
-      productThumbsWrapper: '.thumbnails-wrapper',
+      saleClasses: 'product-price__sale product-price__sale--single',
       saleLabel: '.product-price__sale-label-' + sectionId,
       singleOptionSelector: '.single-option-selector-' + sectionId,
-      shopifyPaymentButton: '.shopify-payment-button',
-      priceContainer: '[data-price]',
-      regularPrice: '[data-regular-price]',
-      salePrice: '[data-sale-price]'
-    };
-
-    this.classes = {
-      hidden: 'hide',
-      productOnSale: 'price--on-sale',
-      productUnavailable: 'price--unavailable'
+	  formContainer: '#AddToCartForm-product-template',
     };
 
     // Stop parsing if we don't have the product json script tag when loading
@@ -2460,11 +3011,32 @@ theme.Product = (function() {
     this._stringOverrides();
     this._initVariants();
     this._initImageSwitch();
-    this._initAddToCart();
     this._setActiveThumbnail();
+	
+	//added
+        this.initQtySelector();
+        this.initAjaxProductForm();
   }
 
   Product.prototype = _.assignIn({}, Product.prototype, {
+	//added
+	
+      initQtySelector: function() {
+        this.$container.find('.js-qty__wrapper').each(function() {
+          new theme.QtySelector($(this), {
+            namespace: '.product'
+          });
+        });
+      },
+  
+      initAjaxProductForm: function() {
+        if (theme.settings.cartType === 'drawer') {
+          new theme.AjaxProduct($(this.selectors.formContainer));
+        }
+      },  
+	  
+	////
+	  
     _stringOverrides: function() {
       theme.productStrings = theme.productStrings || {};
       $.extend(theme.strings, theme.productStrings);
@@ -2523,7 +3095,7 @@ theme.Product = (function() {
 
       this.$container.on(
         'variantChange' + this.settings.namespace,
-        this._updateAvailability.bind(this)
+        this._updateAddToCart.bind(this)
       );
       this.$container.on(
         'variantImageChange' + this.settings.namespace,
@@ -2546,47 +3118,14 @@ theme.Product = (function() {
 
       var self = this;
 
-      $(this.selectors.productThumbImages)
-        .on('click', function(evt) {
-          evt.preventDefault();
-          var $el = $(this);
+      $(this.selectors.productThumbImages).on('click', function(evt) {
+        evt.preventDefault();
+        var $el = $(this);
 
-          var imageId = $el.data('thumbnail-id');
+        var imageId = $el.data('thumbnail-id');
 
-          self._switchImage(imageId);
-          self._setActiveThumbnail(imageId);
-        })
-        .on('keyup', self._handleImageFocus.bind(self));
-    },
-
-    _initAddToCart: function() {
-      var self = this;
-      var $quantityInput = $(self.selectors.quantity);
-
-      if ($quantityInput.length === 0) return;
-
-      $(self.selectors.addToCart).on('click', function(evt) {
-        var isInvalidQuantity = $quantityInput.val() <= 0;
-
-        $(self.selectors.errorQuantityMessage).toggleClass(
-          self.classes.hidden,
-          !isInvalidQuantity
-        );
-
-        if (isInvalidQuantity) {
-          $quantityInput
-            .attr(
-              'aria-describedby',
-              'error-quantity-' + self.settings.sectionId
-            )
-            .attr('aria-invalid', true);
-          $(self.selectors.errorQuantityMessage).focus();
-          evt.preventDefault();
-        } else {
-          $quantityInput
-            .removeAttr('aria-describedby')
-            .removeAttr('aria-invalid');
-        }
+        self._switchImage(imageId);
+        self._setActiveThumbnail(imageId);
       });
     },
 
@@ -2606,13 +3145,8 @@ theme.Product = (function() {
           imageId +
           "']"
       );
-
-      $(this.selectors.productThumbImages)
-        .removeClass(activeClass)
-        .removeAttr('aria-current');
-
+      $(this.selectors.productThumbImages).removeClass(activeClass);
       $thumbnail.addClass(activeClass);
-      $thumbnail.attr('aria-current', true);
     },
 
     _switchImage: function(imageId) {
@@ -2627,15 +3161,8 @@ theme.Product = (function() {
           "'])",
         this.$container
       );
-
-      $newImage.removeClass(this.classes.hidden);
-      $otherImages.addClass(this.classes.hidden);
-    },
-
-    _handleImageFocus: function(evt) {
-      if (evt.keyCode !== slate.utils.keyboardKeys.ENTER) return;
-
-      $(this.selectors.productFeaturedImage + ':visible').focus();
+      $newImage.removeClass('hide');
+      $otherImages.addClass('hide');
     },
 
     _initThumbnailSlider: function() {
@@ -2656,117 +3183,38 @@ theme.Product = (function() {
       };
 
       $(this.selectors.productThumbs).slick(options);
-
-      // Accessibility concerns not yet fixed in Slick Slider
-      $(this.selectors.productThumbsWrapper, this.$container)
-        .find('.slick-list')
-        .removeAttr('aria-live');
-      $(this.selectors.productThumbsWrapper, this.$container)
-        .find('.slick-disabled')
-        .removeAttr('aria-disabled');
-
       this.settings.sliderActive = true;
     },
 
     _destroyThumbnailSlider: function() {
       $(this.selectors.productThumbs).slick('unslick');
       this.settings.sliderActive = false;
-
-      // Accessibility concerns not yet fixed in Slick Slider
-      $(this.selectors.productThumbsWrapper, this.$container)
-        .find('[tabindex="-1"]')
-        .removeAttr('tabindex');
-    },
-
-    _liveRegionText: function(variant) {
-      // Dummy content for live region
-      var liveRegionText = '[Availability] [Regular] [$$] [Sale] [$]';
-
-      if (!variant) {
-        liveRegionText = theme.strings.unavailable;
-        return liveRegionText;
-      }
-
-      // Update availability
-      var availability = variant.available ? '' : theme.strings.soldOut + ',';
-      liveRegionText = liveRegionText.replace('[Availability]', availability);
-
-      // Update pricing information
-      var regularLabel = '';
-      var regularPrice = theme.Currency.formatMoney(
-        variant.price,
-        theme.moneyFormat
-      );
-      var saleLabel = '';
-      var salePrice = '';
-
-      if (variant.compare_at_price > variant.price) {
-        regularLabel = theme.strings.regularPrice;
-        regularPrice =
-          theme.Currency.formatMoney(
-            variant.compare_at_price,
-            theme.moneyFormat
-          ) + ',';
-        saleLabel = theme.strings.sale;
-        salePrice = theme.Currency.formatMoney(
-          variant.price,
-          theme.moneyFormat
-        );
-      }
-
-      liveRegionText = liveRegionText
-        .replace('[Regular]', regularLabel)
-        .replace('[$$]', regularPrice)
-        .replace('[Sale]', saleLabel)
-        .replace('[$]', salePrice)
-        .trim();
-
-      return liveRegionText;
-    },
-
-    _updateLiveRegion: function(evt) {
-      var variant = evt.variant;
-      var liveRegion = this.container.querySelector(
-        this.selectors.productStatus
-      );
-      liveRegion.textContent = this._liveRegionText(variant);
-      liveRegion.setAttribute('aria-hidden', false);
-
-      // hide content from accessibility tree after announcement
-      setTimeout(function() {
-        liveRegion.setAttribute('aria-hidden', true);
-      }, 1000);
     },
 
     _updateAddToCart: function(evt) {
       var variant = evt.variant;
 
       if (variant) {
+        $(this.selectors.productPrices)
+          .removeClass('visibility-hidden')
+          .attr('aria-hidden', 'true');
+
         if (variant.available) {
           $(this.selectors.addToCart).prop('disabled', false);
           $(this.selectors.addToCartText).text(theme.strings.addToCart);
-          $(this.selectors.shopifyPaymentButton, this.$container).show();
         } else {
           // The variant doesn't exist, disable submit button and change the text.
           // This may be an error or notice that a specific variant is not available.
           $(this.selectors.addToCart).prop('disabled', true);
           $(this.selectors.addToCartText).text(theme.strings.soldOut);
-          $(this.selectors.shopifyPaymentButton, this.$container).hide();
         }
       } else {
         $(this.selectors.addToCart).prop('disabled', true);
         $(this.selectors.addToCartText).text(theme.strings.unavailable);
-        $(this.selectors.shopifyPaymentButton, this.$container).hide();
+        $(this.selectors.productPrices)
+          .addClass('visibility-hidden')
+          .attr('aria-hidden', 'false');
       }
-    },
-
-    _updateAvailability: function(evt) {
-      // update form submit
-      this._updateAddToCart(evt);
-      // update live region
-      this._updateLiveRegion(evt);
-
-      this._updatePrice(evt);
     },
 
     _updateImages: function(evt) {
@@ -2780,40 +3228,32 @@ theme.Product = (function() {
     _updatePrice: function(evt) {
       var variant = evt.variant;
 
-      var $priceContainer = $(this.selectors.priceContainer, this.$container);
-      var $regularPrice = $(this.selectors.regularPrice, $priceContainer);
-      var $salePrice = $(this.selectors.salePrice, $priceContainer);
+      // Update the product price
+      $(this.selectors.originalPrice).html(
+        theme.Currency.formatMoney(variant.price, theme.moneyFormat)
+      );
 
-      // Reset product price state
-      $priceContainer
-        .removeClass(this.classes.productUnavailable)
-        .removeClass(this.classes.productOnSale)
-        .removeAttr('aria-hidden');
-
-      // Unavailable
-      if (!variant) {
-        $priceContainer
-          .addClass(this.classes.productUnavailable)
-          .attr('aria-hidden', true);
-        return;
-      }
-
-      // On sale
+      // Update and show the product's compare price if necessary
       if (variant.compare_at_price > variant.price) {
-        $regularPrice.html(
-          theme.Currency.formatMoney(
-            variant.compare_at_price,
-            theme.moneyFormat
+        $(this.selectors.comparePrice)
+          .html(
+            theme.Currency.formatMoney(
+              variant.compare_at_price,
+              theme.moneyFormat
+            )
           )
+          .removeClass('hide');
+
+        $(this.selectors.originalPriceWrapper).addClass(
+          this.selectors.saleClasses
         );
-        $salePrice.html(
-          theme.Currency.formatMoney(variant.price, theme.moneyFormat)
-        );
-        $priceContainer.addClass(this.classes.productOnSale);
+
+        $(this.selectors.saleLabel).removeClass('hide');
       } else {
-        // Regular price
-        $regularPrice.html(
-          theme.Currency.formatMoney(variant.price, theme.moneyFormat)
+        $(this.selectors.comparePrice).addClass('hide');
+        $(this.selectors.saleLabel).addClass('hide');
+        $(this.selectors.originalPriceWrapper).removeClass(
+          this.selectors.saleClasses
         );
       }
     },
@@ -2960,7 +3400,13 @@ theme.SlideshowSection = (function() {
     var sectionId = $container.attr('data-section-id');
     var slideshow = (this.slideshow = '#Slideshow-' + sectionId);
 
-    theme.slideshows[slideshow] = new theme.Slideshow(slideshow, sectionId);
+    $('.slideshow__video', slideshow).each(function() {
+      var $el = $(this);
+      theme.SlideshowVideo.init($el);
+      theme.SlideshowVideo.loadVideo($el.attr('id'));
+    });
+
+    theme.slideshows[slideshow] = new theme.Slideshow(slideshow);
   }
 
   return SlideshowSection;
@@ -2976,11 +3422,6 @@ theme.SlideshowSection.prototype = _.assignIn(
 
     onBlockSelect: function(evt) {
       var $slideshow = $(this.slideshow);
-      var adaptHeight = $slideshow.data('adapt-height');
-
-      if (adaptHeight) {
-        theme.slideshows[this.slideshow].setSlideshowHeight();
-      }
 
       // Ignore the cloned version
       var $slide = $(
@@ -2988,12 +3429,12 @@ theme.SlideshowSection.prototype = _.assignIn(
       );
       var slideIndex = $slide.data('slick-index');
 
-      // Go to selected slide, pause auto-rotate
+      // Go to selected slide, pause autoplay
       $slideshow.slick('slickGoTo', slideIndex).slick('slickPause');
     },
 
     onBlockDeselect: function() {
-      // Resume auto-rotate
+      // Resume autoplay
       $(this.slideshow).slick('slickPlay');
     }
   }
@@ -3046,29 +3487,6 @@ theme.init = function() {
   $('a[href="#"]').on('click', function(evt) {
     evt.preventDefault();
   });
-
-  slate.a11y.accessibleLinks({
-    messages: {
-      newWindow: theme.strings.newWindow,
-      external: theme.strings.external,
-      newWindowExternal: theme.strings.newWindowExternal
-    },
-    $links: $('a[href]:not([aria-describedby], .product-single__thumbnail)')
-  });
-
-  theme.FormStatus.init();
 };
 
 $(theme.init);
-
-$(document).ready(function() {
-  $('body').on('click', '[name="checkout"], [name="goto_pp"], [name="goto_gc"]', function() {
-    if ($('#agree').is(':checked')) {
-      $(this).submit();
-    }
-    else {
-      alert("You must agree with the terms and conditions of sales to check out.");
-      return false;
-    }
-  });
-});
